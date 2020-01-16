@@ -1,0 +1,266 @@
+---
+title: "Machine Learning Project"
+author: "Bill McCann"
+date: "Sunday, September 27, 2015"
+output: html_document
+---
+
+###Summary    
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).    
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.    
+
+```{r setup, results='hide', warning=FALSE, message=FALSE, echo=FALSE}
+##
+## Setup working directory and libraries
+##
+setwd("~/GitHub/Machine Learning")
+library(AppliedPredictiveModeling)
+library(caret)
+library(dplyr)
+```
+
+###Data Exploration
+After downloading the data, the first task was performing a quick exporatory scan of the training dataset using the R summary() function.
+
+```{r files, results='hide', warning=FALSE, message=FALSE, echo=FALSE}
+##
+## Download data for the project
+##
+getData = function(url, fileName)
+{
+    if (!file.exists(fileName)) { download.file(url, fileName, mode="w")}
+    read.csv(fileName)
+}
+
+# Call the GetData function to download the files
+training = getData("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", "pml-training.csv")
+testing = getData("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", "pml-testing.csv")
+```
+
+The summary, although not shown here for brevity, provided a couple of key insights. First, many of the 160 variables in the training data are missing or invalid. Of these variables, so much of the data is missing that imputed values cannot be reliably substituted. For this reason, we are dropping over 100 variables. Our new dataset contains 49 variables that can be used in our model.
+
+```{r newvars, results='hide', warning=FALSE, message=FALSE, echo=FALSE}
+trainingVars = training %>%
+               select(roll_belt,
+                      pitch_belt,
+                      yaw_belt,
+                      total_accel_belt,
+                      gyros_belt_x,
+                      gyros_belt_y,
+                      gyros_belt_z,
+                      accel_belt_x,
+                      accel_belt_y,
+                      accel_belt_z,
+                      magnet_belt_x,
+                      magnet_belt_y,
+                      magnet_belt_z,
+                      roll_arm,
+                      pitch_arm,
+                      yaw_arm,
+                      total_accel_arm,
+                      gyros_arm_x,
+                      gyros_arm_y,
+                      gyros_arm_z,
+                      accel_arm_x,
+                      accel_arm_y,
+                      accel_arm_z,
+                      magnet_arm_x,
+                      magnet_arm_y,
+                      magnet_arm_z,
+                      roll_dumbbell,
+                      pitch_dumbbell,
+                      yaw_dumbbell,
+                      total_accel_dumbbell,
+                      gyros_dumbbell_x,
+                      gyros_dumbbell_y,
+                      gyros_dumbbell_z,
+                      accel_dumbbell_x,
+                      accel_dumbbell_y,
+                      accel_dumbbell_z,
+                      magnet_dumbbell_x,
+                      magnet_dumbbell_y,
+                      magnet_dumbbell_z,
+                      roll_forearm,
+                      pitch_forearm,
+                      gyros_forearm_x,
+                      gyros_forearm_y,
+                      gyros_forearm_z,
+                      accel_forearm_x,
+                      accel_forearm_y,
+                      accel_forearm_z,
+                      magnet_forearm_x,
+                      magnet_forearm_y,
+                      magnet_forearm_z,
+                      classe)
+```
+
+###Development of a machine learning algorithm to predict activity quality from activity monitors
+The variables selected as possible predictors are...
+
+* roll_belt
+* pitch_belt
+* yaw_belt
+* total_accel_belt
+* gyros_belt_x
+* gyros_belt_y
+* gyros_belt_z
+* accel_belt_x
+* accel_belt_y
+* accel_belt_z
+* magnet_belt_x
+* magnet_belt_y
+* magnet_belt_z
+* roll_arm
+* pitch_arm
+* yaw_arm
+* total_accel_arm
+* gyros_arm_x
+* gyros_arm_y
+* gyros_arm_z
+* accel_arm_x
+* accel_arm_y
+* accel_arm_z
+* magnet_arm_x
+* magnet_arm_y
+* magnet_arm_z
+* roll_dumbbell
+* pitch_dumbbell
+* yaw_dumbbell
+* total_accel_dumbbell
+* gyros_dumbbell_x
+* gyros_dumbbell_y
+* gyros_dumbbell_z
+* accel_dumbbell_x
+* accel_dumbbell_y
+* accel_dumbbell_z
+* magnet_dumbbell_x
+* magnet_dumbbell_y
+* magnet_dumbbell_z
+* roll_forearm
+* pitch_forearm
+* gyros_forearm_x
+* gyros_forearm_y
+* gyros_forearm_z
+* accel_forearm_x
+* accel_forearm_y
+* accel_forearm_z
+* magnet_forearm_x
+* magnet_forearm_y
+* magnet_forearm_z 
+
+Some addition exploration was done to determine if any of the variables have an obvious relationship with the outcome variable. *Note: the outcome variable is "classe"*. This was accomplished by running a series of plots using the Caret package **featurePlot**.
+
+For brevity sake, I am including only two of these plots below. The others, like the ones below, did not indicate any strong relationships. So I concluded that I would develop the models using all the variables as predictors.
+
+```{r}
+featurePlot(x=trainingVars[,c("yaw_belt", "total_accel_belt", "classe")], y=trainingVars$classe, plot="pairs")
+featurePlot(x=trainingVars[,c("accel_dumbbell_x", "accel_dumbbell_y","accel_dumbbell_z", "classe")], y=trainingVars$classe, plot="pairs")
+```
+
+I took a small random sample of training data to run training experiments. I ran a boosted tree with model="gbm", random forest with model="rf", bayes with model="nb", and linear discriminant analysis with model="lda".
+
+**The results of the random forest model was:**
+```
+
+  mtry  Accuracy   Kappa      Accuracy SD  Kappa SD  
+   2    0.9259215  0.9063233  0.011799685  0.01499934
+  26    0.9296867  0.9110801  0.009014763  0.01154378
+  50    0.9163395  0.8942073  0.010626852  0.01357683
+
+```
+
+**The results of the boosted tree:**
+```
+
+  interaction.depth  n.trees  Accuracy   Kappa      Accuracy SD  Kappa SD  
+  1                   50      0.7471853  0.6795247  0.019702726  0.02489033
+  1                  100      0.8037437  0.7516248  0.017256838  0.02187583
+  1                  150      0.8320266  0.7875188  0.009936164  0.01262769
+  2                   50      0.8298238  0.7845711  0.014764531  0.01866347
+  2                  100      0.8741389  0.8407311  0.011928660  0.01529367
+  2                  150      0.8945365  0.8666043  0.010365939  0.01319979
+  3                   50      0.8615164  0.8247298  0.011504673  0.01459839
+  3                  100      0.9004253  0.8740208  0.008946480  0.01142060
+  3                  150      0.9168256  0.8947819  0.009283227  0.01188769
+```
+
+**The results of the naive bayes:**
+```
+
+  usekernel  Accuracy   Kappa      Accuracy SD  Kappa SD  
+  FALSE      0.4913171  0.3677539  0.05749574   0.06155182
+  TRUE      0.6904373  0.6066876  0.02177065   0.02815259
+```
+
+**The results of the linear discriminant analysis**
+```
+
+  Accuracy   Kappa      Accuracy SD  Kappa SD  
+  0.7048277  0.6257115  0.01243026   0.01591003
+```
+
+Upon reviewing the results of these I determined that the random forest provided the best model.
+
+###Out of sample error to be and estimate the error appropriately with cross-validation    
+I ran a prediction of the random forest model against the testing sub-dataset. *Note:* the testing sub-dataset was created by partitioning the training data; it is not the project's test data. 
+
+**Prediction results on the test data**
+```
+prediction   A   B   C   D   E
+         A 439  11   0   0   0
+         B   1 280   7   0   3
+         C   2  11 263  14   6
+         D   4   2   4 243   3
+         E   0   0   0   0 276
+
+FALSE  TRUE 
+   68  1501
+```
+
+**Note.** You may notice that the testing dataset is much small than 40% of the original 19,622 observations. For performance purposes, I took a small random sample of the original training data (20% of the file) and split that smaller dataset 60/40.
+
+The above results show accurate predictions on 96.7% of the test data. It is unusual for the test data to perform better than the training data, so I believe the kappa metric will remain at or below the .89 of the training performance.
+
+To further cross-validate the model, I ran the random forest cross validation function rfcv against the model using five k-folds. The resulting five tables are shown below:
+
+```
+   
+      A   B   C   D   E
+  A 670   0   0   0   0
+  B   0 456   0   0   2
+  C   0   0 411   1   0
+  D   0   0   0 386   0
+  E   0   0   0   0 432
+  
+   
+      A   B   C   D   E
+  A 670   0   0   0   0
+  B   0 456   0   0   0
+  C   0   0 411   0   0
+  D   0   0   0 387   1
+  E   0   0   0   0  43
+  
+      A   B   C   D   E
+  A 670   0   0   0   0
+  B   0 456   0   0   0
+  C   0   0 411   0   0
+  D   0   0   0 387   0
+  E   0   0   0   0 434
+  
+      A   B   C   D   E
+  A 670   0   0   0   0
+  B   0 456   0   0   0
+  C   0   0 411   0   0
+  D   0   0   0 387   0
+  E   0   0   0   0 434
+  
+      A   B   C   D   E
+  A 670   0   0   0   0
+  B   0 456   0   0   0
+  C   0   0 411   0   0
+  D   0   0   0 387   0
+  E   0   0   0   0 434
+
+```
+
+The cross validation provides evidence to support the high degree of accuracy of the model.

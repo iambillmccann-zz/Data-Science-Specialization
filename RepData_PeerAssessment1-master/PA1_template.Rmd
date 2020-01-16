@@ -1,0 +1,200 @@
+---
+title: "Reproducible Research Peer Assessment"
+author: "Bill McCann"
+date: "Friday, June 12, 2015"
+output: html_document
+---
+
+## Introduction
+
+It is now possible to collect a large amount of data about personal movement using activity monitoring devices such as a Fitbit, Nike Fuelband, or Jawbone Up. These type of devices are part of the ???quantified self??? movement ??? a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. But these data remain under-utilized both because the raw data are hard to obtain and there is a lack of statistical methods and software for processing and interpreting the data.
+
+This assignment makes use of data from a personal activity monitoring device. This device collects data at 5 minute intervals through out the day. The data consists of two months of data from an anonymous individual collected during the months of October and November, 2012 and include the number of steps taken in 5 minute intervals each day.
+
+```{r setup, results='hide', warning=FALSE, message=FALSE}
+library(dplyr)
+library(xtable)
+
+# read the data into a dataframe
+rawData <- read.csv("activity.csv", stringsAsFactors = FALSE)
+```
+
+Calculate the total number of steps taken per day. Show a histogram of the total number of steps taken each day. This plot actually uses barplot to draw the histogram since we are not plotting frequencies.
+
+```{r}
+# clean the data by selecting the steps and date columns
+# then group by the data and sum the number of steps
+cleanData <- rawData %>% 
+             select(steps, date) %>%
+             group_by(date) %>%
+             summarize(steps = sum(steps))
+
+# make the histogram as a barplot of the steps by date
+with(cleanData, 
+     barplot(steps, names.arg = date))
+```
+
+
+```{r results='asis'}
+# build a table containing the mean and median number of steps
+results <- matrix(c("mean daily steps", 
+                    "median daily steps", 
+                     mean(cleanData$steps, na.rm=TRUE), 
+                     median(cleanData$steps, na.rm = TRUE)), 
+                  nrow = 2, 
+                  ncol = 2)
+
+# using print.xtable because it's the only way I know to suppress row and
+# column names
+print.xtable(xtable(results), 
+             type = getOption("xtable.type", "html"),
+             include.rownames = getOption("xtable.include.rownames", FALSE),
+             include.colnames = getOption("xtable.include.colnames", FALSE))
+```
+
+
+The mean and median are calculated using base functions. The results are displayed in the table above.
+
+Another interesting analysis is the average steps taken in each interval. The plot of this data shows a peak amount just prior to the 1,000th interval. But which interval has this peak?
+
+
+```{r}
+# clean a second data frame by selecting steps and interval columns
+# then group by interval and compute the average steps in each group
+moreData <- rawData %>%
+            select(steps, interval) %>%
+            group_by(interval) %>%
+            summarize(avgsteps = mean(steps, na.rm=TRUE))
+
+# plot a time series line using the interval as the time against the
+# average steps.
+with(moreData,
+     plot(interval, avgsteps, type = "l"))
+
+# determine the interval with the max steps by applying a filter
+maxSteps <- max(moreData$avgsteps, na.rm = TRUE)
+maxInterval <- filter(moreData, avgsteps == maxSteps)
+```
+
+```{r results='asis'}
+# build a table of the selected interval and the number of max steps.
+results2 <- matrix(c("interval with max steps", 
+                     "maximum steps",
+                      maxInterval$interval,
+                      maxInterval$avgsteps),
+                   nrow = 2,
+                   ncol = 2)
+
+# using print.xtable because it's the only way I know to suppress row and
+# column names
+print.xtable(xtable(results2), 
+             type = getOption("xtable.type", "html"),
+             include.rownames = getOption("xtable.include.rownames", FALSE),
+             include.colnames = getOption("xtable.include.colnames", FALSE))
+```
+
+The table above displays the interval with the maximum average steps. For good measure this max value is shown too.
+
+There are a number of days/intervals where there are missing values (coded as NA). The presence of missing days may introduce bias into some calculations or summaries of the data.
+
+```{r}
+# determine the number of missing observations
+missingData <- filter(rawData, is.na(steps))
+numberMissing <- count(missingData)
+```
+
+```{r results='asis'}
+# build a table to print the count of missing data
+results3 <- matrix(c("number of missing observations", numberMissing),
+                   nrow = 1,
+                   ncol = 2)
+
+# using print.xtable because it's the only way I know to suppress row and
+# column names
+print.xtable(xtable(results3), 
+             type = getOption("xtable.type", "html"),
+             include.rownames = getOption("xtable.include.rownames", FALSE),
+             include.colnames = getOption("xtable.include.colnames", FALSE))
+```
+
+
+The number of missing values in the dataset was counted and shown in above. Since this number is significant, some further analysis is warranted.
+
+To test the affect of missing data, values were imputed into the missing rows. The value inserted is the average for the interval containing the missing data. To accomplish this, the raw data is first merged with the averages of steps at each interval. A ifelse() call will substitue the average value when the rawdata value is missing.
+
+The histogram of total daily steps for this new dataset is shown below.
+
+```{r}
+# fill in missing values by merging rawData with moreData and mutating
+# steps where they are missing with the average for the interval
+mergeData <- merge(rawData, moreData, by.x="interval", by.y="interval")
+noMissingData <- mergeData %>% 
+                 mutate(steps = ifelse(is.na(steps), avgsteps, steps)) %>% 
+                 select(steps, date, interval)
+
+# If I knew I was going to do this twice, I would have written a function. Now in
+# the essence of time I using copy-and-paste coding.
+# clean the data by selecting the steps and date columns
+# then group by the data and sum the number of steps
+newCleanData <- noMissingData %>% 
+                select(steps, date) %>%
+                group_by(date) %>%
+                summarize(steps = sum(steps))
+
+# make the histogram as a barplot of the steps by date
+with(newCleanData, 
+     barplot(steps, names.arg = date))
+```
+
+```{r results='asis'}
+# build a table containing the mean and median number of steps
+results4 <- matrix(c("mean daily steps", 
+                     "median daily steps", 
+                     mean(newCleanData$steps), 
+                     median(newCleanData$steps)), 
+                   nrow = 2, 
+                   ncol = 2)
+
+# using print.xtable because it's the only way I know to suppress row and
+# column names
+print.xtable(xtable(results4), 
+             type = getOption("xtable.type", "html"),
+             include.rownames = getOption("xtable.include.rownames", FALSE),
+             include.colnames = getOption("xtable.include.colnames", FALSE))
+```
+
+The new mean and median, as shown above, have very little variance from the original calculation. This makes sense since we have simply substituted mean values for missing; such a subsitition will not affect the mean and will only move the median in very skewed datasets.
+
+Finally, let's look at the differences in activity between weekdays and weekends. Our plots show that although weekdays have a single peak period of activity, over time there is consistently more activity on the weekend.
+
+```{r}
+# Create a dataframe that distinguishes between weekdays and weekends
+# Distinguishing is accomplished by mutating the date string into a
+# native date object. Then the day of the week is determined from the
+# date. By checking for Sat or Sun, we determine if the day is a weekend
+# of weekday. Weekends are assigned zero and weekdays one. Since intervals
+# will always occur on the same day, we can take the MAX of the typeOfDay
+# (or Min Or Mean).
+weekdayData <- noMissingData %>%
+               mutate(date = as.Date(date, "%Y-%m-%d"),
+                      day = weekdays(date, abbreviate = TRUE),
+                      typeOfDay = ifelse(day == "Sat" | day == "Sun", 0, 1))
+
+weekdays <- weekdayData %>%
+            filter(typeOfDay == 1) %>%
+            group_by(interval) %>%
+            summarize(avgsteps = mean(steps, na.rm=TRUE)) %>%
+            select(avgsteps, interval)
+
+weekends <- weekdayData %>%
+            filter(typeOfDay == 0) %>%
+            group_by(interval) %>%
+            summarize(avgsteps = mean(steps, na.rm=TRUE)) %>%
+            select(avgsteps, interval)
+
+# plot each time series line using the interval as the time against the
+# average steps as seperate charts.
+par(mfrow=c(2,1))
+with(weekdays, plot(interval, avgsteps, type = "l", main = "Weekdays"))
+with(weekends, plot(interval, avgsteps, type = "l", main = "Weekends"))
+```
